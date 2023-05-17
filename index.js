@@ -41,7 +41,8 @@ app.get("/api/shorturl/:id", function (req, res) {
 app.post("/api/shorturl", async (req, res) => {
   try {
     //get url
-    const original_url = req.body.url; //.split('/')[2];
+    const original_url = req.body.url.split('/')[2]
+    console.log(original_url);
     //if url is invalid SEND { error: "invalid url" }
     await dns.promises.lookup(original_url);
     //if url is valid check if url exist in database
@@ -49,15 +50,15 @@ app.post("/api/shorturl", async (req, res) => {
     const indexOfUrl = database.indexOf(original_url);
     //if it exist gets id and SEND { original_url: original_url, short_url: id }
     if (indexOfUrl !== -1) {
-      res.json({ original_url: original_url, short_url: indexOfUrl });
+      res.json({ original_url: "https://"+original_url, short_url: indexOfUrl });
     } else {
       //if it dosen't exist ADD it to database and SEND { original_url: original_url, short_url: id }
       database.push(original_url);
-      res.json({ original_url: original_url, short_url: database.length - 1 });
+      res.json({ original_url: "https://"+original_url, short_url: database.length - 1 });
     }
     fs.writeFileSync("./database.json", JSON.stringify(database));
-    console.log(database);
   } catch (error) {
+    console.log(error)
     res.json({ error: "invalid url" });
   }
 });
