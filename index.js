@@ -3,11 +3,21 @@ const express = require("express");
 var fs = require("fs");
 const dns = require("node:dns");
 const cors = require("cors");
-const { json } = require("body-parser");
 const app = express();
+const mongoose = require("mongoose");
 
 // Basic Configuration
-const port = process.env.PORT || 80;
+const port = process.env.PORT || 8080;
+MONGODB_URI = process.env.MONGODB_URI;
+
+const Schema = mongoose.Schema;
+const ShortUrl = mongoose.model(
+  "ShortUrl",
+  new Schema({
+    short_url: Number,
+    original_url: String,
+  })
+);
 
 app.use(cors());
 app.use(express.urlencoded({ extended: false }));
@@ -22,15 +32,17 @@ app.get("/api/hello", function (req, res) {
   res.json({ greeting: "hello API" });
 });
 
-app.get("/api/shorturl/:id", function (req, res) {
+app.get("/api/shorturl/:id", async (req, res) => {
   //check url with the id and redirect to there
   //extract the id
   const id = req.params.id;
   //access db and find url at index of id
-  const database = JSON.parse(fs.readFileSync("./database.json"));
-  const original_url = database[id];
-  if (original_url) {
-    res.redirect("http://" + original_url);
+  const short_url = await ShortUrl.findOne({
+    short_url: id,
+  })
+
+  if (short_url) {
+    res.redirect(short_url.original_url);
   } else {
     res.json({
       error: "No short URL found for the given input",
@@ -41,28 +53,45 @@ app.get("/api/shorturl/:id", function (req, res) {
 app.post("/api/shorturl", async (req, res) => {
   try {
     //get url
-    const original_url = req.body.url.split('/')[2]
-    console.log(original_url);
+    const original_url = req.body.url;
     //if url is invalid SEND { error: "invalid url" }
-    await dns.promises.lookup(original_url);
+    if (original_url.split("/")[2]) {
+      await dns.promises.lookup(original_url.split("/")[2]);
+    } else {
+      throw new Error("invalid url");
+    }
     //if url is valid check if url exist in database
-    const database = JSON.parse(fs.readFileSync("./database.json"));
-    const indexOfUrl = database.indexOf(original_url);
+    const shortenedUrl = await ShortUrl.findOne({
+      original_url: original_url,
+    });
     //if it exist gets id and SEND { original_url: original_url, short_url: id }
-    if (indexOfUrl !== -1) {
-      res.json({ original_url: "https://"+original_url, short_url: indexOfUrl });
+    if (shortenedUrl) {
+      res.json({
+        original_url: original_url,
+        short_url: shortenedUrl.short_url,
+      });
     } else {
       //if it dosen't exist ADD it to database and SEND { original_url: original_url, short_url: id }
-      database.push(original_url);
-      res.json({ original_url: "https://"+original_url, short_url: database.length - 1 });
+      const newUrl = new ShortUrl({
+        original_url: original_url,
+        short_url: await ShortUrl.find().count(),
+      });
+      await newUrl.save();
+      res
+        .status(201)
+        .json({
+          original_url: newUrl.original_url,
+          short_url: newUrl.short_url,
+        });
     }
-    fs.writeFileSync("./database.json", JSON.stringify(database));
   } catch (error) {
-    console.log(error)
+    console.log(error);
     res.json({ error: "invalid url" });
   }
 });
 
-app.listen(port, function () {
-  console.log(`Listening on port ${port}`);
+mongoose.connect(MONGODB_URI).then(() => {
+  app.listen(port, function () {
+    console.log(`Listening on port ${port}`);
+  });
 });
